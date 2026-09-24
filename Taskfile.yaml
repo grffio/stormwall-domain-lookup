@@ -1,0 +1,127 @@
+version: '3.49'
+
+includes:
+  docker:
+    taskfile: ./Taskfile_Docker.yaml
+    dir: ./
+
+set: [errexit, nounset, pipefail]
+
+vars:
+  APP_NAME: "stormwall-domains"
+  DOCKER_REGISTRY: "ghcr.io/grffio"
+
+  GOLANGCI_LINT_VERSION: v2.13.2
+
+  BIN_DIR: '{{.ROOT_DIR}}/.bin'
+  TOOLS_DIR: '{{.ROOT_DIR}}/.tools'
+  TESTS_DIR: '{{.ROOT_DIR}}/.tests'
+  COVERAGE_FILE: '{{.TESTS_DIR}}/coverage.out'
+  COVERAGE_HTML: '{{.TESTS_DIR}}/coverage.html'
+
+tasks:
+  default:
+    cmds:
+      - task: verify
+
+  verify:
+    desc: Run the local verification suite
+    cmds:
+      - task: deps:verify
+      - task: lint
+      - task: test
+      - task: build
+
+  verify:ci:
+    desc: Run the CI verification suite
+    cmds:
+      - task: deps:verify
+      - task: lint
+      - task: test:race
+      - task: build
+
+  deps:verify:
+    desc: Verify go.mod and go.sum are tidy
+    cmds:
+      - go mod tidy -diff
+      - go mod verify
+
+  deps:tidy:
+    desc: Update go.mod and go.sum
+    cmds:
+      - go mod tidy
+
+  deps:download:
+    desc: Download Go module dependencies
+    cmds:
+      - go mod download
+
+  lint:
+    desc: Run golangci-lint
+    deps:
+      - tools:golangci-lint
+    cmds:
+      - '"{{.TOOLS_DIR}}/golangci-lint" run ./...'
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test -cover ./...
+
+  test:race:
+    desc: Run unit tests with the race detector
+    env:
+      CGO_ENABLED: '1'
+    cmds:
+      - go test -cover -race ./...
+
+  test:coverage:
+    desc: Generate test coverage
+    cmds:
+      - mkdir -p "{{.TESTS_DIR}}"
+      - go test -coverprofile="{{.COVERAGE_FILE}}" ./...
+
+  test:coverage:html:
+    desc: Generate HTML coverage report
+    deps:
+      - test:coverage
+    cmds:
+      - go tool cover -html="{{.COVERAGE_FILE}}" -o "{{.COVERAGE_HTML}}"
+      - go tool cover -html={{.COVERAGE_FILE}}
+
+  build:
+    desc: Build all commands from ./cmd
+    env:
+      CGO_ENABLED: '0'
+    preconditions:
+      - sh: test -d ./cmd
+        msg: "./cmd directory not found"
+    cmds:
+      - mkdir -p "{{.BIN_DIR}}"
+      - go build -v -buildvcs=true -trimpath -ldflags="-s -w" -o "{{.BIN_DIR}}/" ./cmd/...
+
+  clean:
+    desc: Remove generated artifacts
+    cmds:
+      - rm -rf "{{.BIN_DIR}}" "{{.TESTS_DIR}}"
+
+  tools:
+    desc: Install development tools
+    cmds:
+      - task: tools:golangci-lint
+
+  tools:golangci-lint:
+    internal: true
+    status:
+      - >-
+        test -x "{{.TOOLS_DIR}}/golangci-lint" &&
+        go version -m "{{.TOOLS_DIR}}/golangci-lint" |
+        grep -Eq 'mod[[:space:]]+github.com/golangci/golangci-lint/v2[[:space:]]+{{.GOLANGCI_LINT_VERSION}}([[:space:]]|$)'
+    cmds:
+      - mkdir -p "{{.TOOLS_DIR}}"
+      - GOBIN="{{.TOOLS_DIR}}" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+
+  tools:clean:
+    desc: Remove installed development tools
+    cmds:
+      - rm -rf "{{.TOOLS_DIR}}"

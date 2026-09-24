@@ -1,0 +1,13 @@
+.idea/
+.vscode/
+.github/
+bin/
+dist/
+out/
+tmp/
+*.log
+*.test
+coverage.*
+*.out
+.env
+.env.*
