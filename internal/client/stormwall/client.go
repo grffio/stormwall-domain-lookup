@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"time"
 
@@ -17,7 +18,9 @@ import (
 	"github.com/grffio/stormwall-domain-lookup/pkg/logx"
 )
 
-const domainsPath = "domains"
+const (
+	domainsPath = "domains"
+)
 
 // Client retrieves domains from the Stormwall API.
 // A Client is safe for concurrent use.
@@ -115,36 +118,67 @@ func (c *Client) Search(ctx context.Context, apiKey, serviceID, filter string) (
 
 	log.DebugContext(ctx, "upstream domain search started")
 
-	body, err := c.get(ctx, apiKey, c.searchURL(serviceID, filter), log)
-	if err != nil {
-		log.DebugContext(
-			ctx,
-			"upstream domain search failed",
-			logx.Int("duration_ms", time.Since(started).Milliseconds()),
-			logx.Error(err),
-		)
-		return nil, fmt.Errorf("search domains: %w", err)
-	}
+	result := make([]domains.Domain, 0)
+	pages := 0
 
-	result, err := decodeDomains(body)
-	if err != nil {
-		log.DebugContext(
-			ctx,
-			"upstream response decoding failed",
-			logx.Int("response_bytes", len(body)),
-			logx.Int("duration_ms", time.Since(started).Milliseconds()),
-			logx.Error(err),
-		)
-		return nil, fmt.Errorf("search domains: %w", err)
-	}
+	for offset := 0; ; {
+		target := c.searchURL(serviceID, filter, c.cfg.searchPageLimit, offset)
+		body, err := c.get(ctx, apiKey, target, log)
+		if err != nil {
+			log.DebugContext(ctx, "upstream domain search failed",
+				logx.Int("offset", offset),
+				logx.Int("duration_ms", time.Since(started).Milliseconds()),
+				logx.Error(err),
+			)
+			return nil, fmt.Errorf("search domains: %w", err)
+		}
 
-	return result, nil
+		page, err := decodeDomains(body)
+		if err != nil {
+			log.DebugContext(ctx, "upstream response decoding failed",
+				logx.Int("offset", offset),
+				logx.Int("response_bytes", len(body)),
+				logx.Int("duration_ms", time.Since(started).Milliseconds()),
+				logx.Error(err),
+			)
+			return nil, fmt.Errorf("search domains: %w", err)
+		}
+
+		if page.Offset != offset {
+			err := fmt.Errorf("invalid response: unexpected offset %d, requested %d",
+				page.Offset,
+				offset,
+			)
+			log.DebugContext(ctx, "upstream response pagination failed",
+				logx.Int("offset", offset),
+				logx.Int("duration_ms", time.Since(started).Milliseconds()),
+				logx.Error(err),
+			)
+			return nil, fmt.Errorf("search domains: %w", err)
+		}
+
+		pages++
+		result = append(result, page.Results...)
+
+		offset = page.Offset + len(page.Results)
+		if offset >= page.Total {
+			log.DebugContext(ctx, "upstream domain search completed",
+				logx.Int("domains", len(result)),
+				logx.Int("pages", pages),
+				logx.Int("duration_ms", time.Since(started).Milliseconds()),
+			)
+
+			return result, nil
+		}
+	}
 }
 
-func (c *Client) searchURL(serviceID, filter string) string {
+func (c *Client) searchURL(serviceID, filter string, limit, offset int) string {
 	endpoint := c.endpoint
 
 	query := endpoint.Query()
+	query.Set("limit", strconv.Itoa(limit))
+	query.Set("offset", strconv.Itoa(offset))
 
 	if serviceID != "" {
 		query.Set("serviceId", serviceID)
@@ -178,9 +212,7 @@ func (c *Client) get(ctx context.Context, apiKey, target string, log *slog.Logge
 	for attempt := range maxAttempts {
 		result, timing, err := c.executeAttempt(ctx, apiKey, target)
 		if err != nil {
-			log.DebugContext(
-				ctx,
-				"upstream request attempt aborted",
+			log.DebugContext(ctx, "upstream request attempt aborted",
 				logx.Int("attempt", attempt+1),
 				logx.Int("max_attempts", maxAttempts),
 				logx.Int("permit_wait_ms", timing.permitWait.Milliseconds()),
@@ -259,9 +291,7 @@ func logRecovery(ctx context.Context, log *slog.Logger, attempt int, maxAttempts
 		return
 	}
 
-	log.InfoContext(
-		ctx,
-		"upstream request recovered after retry",
+	log.InfoContext(ctx, "upstream request recovered after retry",
 		logx.Int("attempts", attempt+1),
 		logx.Int("max_attempts", maxAttempts),
 		logx.Duration("duration", time.Since(started)),

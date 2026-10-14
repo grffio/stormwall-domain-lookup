@@ -30,14 +30,15 @@ The Stormwall API key is not configured globally. Clients provide it with each d
 
 ### Configuration
 
-| Variable                               | Default                             | Description                                                                     |
-| -------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------- |
-| `DOMAIN_LOOKUP_ENV`                    | `production`                        | Runtime mode: `local`, `develop`, `production`                                  |
-| `DOMAIN_LOOKUP_LISTEN_ADDR`            | `:8080`                             | HTTP listen address                                                             |
-| `DOMAIN_LOOKUP_CACHE_TTL`              | `3m`                                | TTL for cached domain records                                                   |
-| `DOMAIN_LOOKUP_CACHE_CLEANUP_INTERVAL` | `1m`                                | Interval for removing expired cache records; `0` disables background cleanup    |
-| `DOMAIN_LOOKUP_AUTH_TOKEN`             | empty                               | Optional Bearer token protecting `/v3/*`; authentication is disabled when empty |
-| `DOMAIN_LOOKUP_STORMWALL_BASE_URL`     | `https://api.stormwall.pro/v3/`     | Stormwall API base URL                                                          |
+| Variable                                      | Default                         | Description                                                                     |
+| --------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------- |
+| `DOMAIN_LOOKUP_ENV`                           | `production`                    | Runtime mode: `local`, `develop`, `production`                                  |
+| `DOMAIN_LOOKUP_LISTEN_ADDR`                   | `:8080`                         | HTTP listen address                                                             |
+| `DOMAIN_LOOKUP_CACHE_TTL`                     | `3m`                            | TTL for cached domain records                                                   |
+| `DOMAIN_LOOKUP_CACHE_CLEANUP_INTERVAL`        | `1m`                            | Interval for removing expired cache records; `0` disables background cleanup    |
+| `DOMAIN_LOOKUP_AUTH_TOKEN`                    | empty                           | Optional Bearer token protecting `/v3/*`; authentication is disabled when empty |
+| `DOMAIN_LOOKUP_STORMWALL_BASE_URL`            | `https://api.stormwall.pro/v3/` | Stormwall API base URL                                                          |
+| `DOMAIN_LOOKUP_STORMWALL_SEARCH_PAGE_LIMIT`   | `50`                            | Maximum number of domains requested per Stormwall search page                    |
 
 Configuration can be supplied through environment variables or command-line flags.
 
@@ -159,10 +160,12 @@ Concurrent cache misses for the same credential scope, service ID, and normalize
 The service queries:
 
 ```text
-GET <stormwall-base-url>/domains?serviceId=<service-id>&search=<domain>
+GET <stormwall-base-url>/domains?serviceId=<service-id>&search=<domain>&limit=<page-limit>&offset=<offset>
 X-API-Key: <stormwall-api-key>
 Accept: application/json
 ```
+
+The client follows the Stormwall pagination metadata and requests subsequent pages until all matching domains have been retrieved. This ensures that the exact match is checked even when it is not present in the first page of search results.
 
 An upstream request attempt has a `15s` timeout.
 

@@ -81,13 +81,17 @@ func (a AuthConfig) Validate() error {
 
 // StormwallConfig holds the upstream API endpoint and credentials.
 type StormwallConfig struct {
-	BaseURL string `default:"https://api.stormwall.pro/v3/" help:"Stormwall API base URL."`
+	BaseURL         string `default:"https://api.stormwall.pro/v3/" help:"Stormwall API base URL."`
+	SearchPageLimit int    `default:"50" help:"Maximum number of domains requested per search page."`
 }
 
 // Validate checks the Stormwall API connection settings.
 func (c StormwallConfig) Validate() error {
 	if err := validateBaseURL(c.BaseURL); err != nil {
 		return fmt.Errorf("base url: %w", err)
+	}
+	if c.SearchPageLimit <= 0 {
+		return errors.New("search page limit must be greater than zero")
 	}
 
 	return nil
