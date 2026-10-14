@@ -15,6 +15,7 @@ const (
 	defaultMaxBackoff       = 2 * time.Second
 	defaultMaxRetryAfter    = 5 * time.Second
 	defaultMaxResponseBytes = 16 << 20
+	defaultSearchPageLimit  = 10
 
 	maxRetries = 10
 )
@@ -34,6 +35,7 @@ type config struct {
 	maxBackoff       time.Duration
 	maxRetryAfter    time.Duration
 	maxResponseBytes int64
+	searchPageLimit  int
 
 	transport http.RoundTripper
 	limiter   RateLimiter
@@ -47,7 +49,9 @@ func defaultConfig() config {
 		maxBackoff:       defaultMaxBackoff,
 		maxRetryAfter:    defaultMaxRetryAfter,
 		maxResponseBytes: defaultMaxResponseBytes,
-		transport:        http.DefaultTransport,
+		searchPageLimit:  defaultSearchPageLimit,
+
+		transport: http.DefaultTransport,
 	}
 }
 
@@ -71,6 +75,9 @@ func (c config) validate() error {
 	case c.maxResponseBytes <= 0 ||
 		c.maxResponseBytes == math.MaxInt64:
 		return errors.New("response size limit must be between 1 and max int64 - 1")
+
+	case c.searchPageLimit <= 0:
+		return errors.New("search page limit must be positive")
 
 	case c.transport == nil:
 		return errors.New("transport must not be nil")
@@ -117,6 +124,14 @@ func WithMaxRetryAfter(delay time.Duration) Option {
 func WithMaxResponseBytes(limit int64) Option {
 	return func(c *config) error {
 		c.maxResponseBytes = limit
+		return nil
+	}
+}
+
+// WithSearchPageLimit sets the maximum number of domains requested per page.
+func WithSearchPageLimit(limit int) Option {
+	return func(c *config) error {
+		c.searchPageLimit = limit
 		return nil
 	}
 }

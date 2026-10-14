@@ -87,6 +87,7 @@ func New(cfg config.Config, logger *slog.Logger) (app *App, err error) {
 		cfg.Stormwall.BaseURL,
 		logger,
 		stormwall.WithTimeout(defaultStormwallAttemptTimeout),
+		stormwall.WithSearchPageLimit(cfg.Stormwall.SearchPageLimit),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create stormwall client: %w", err)
